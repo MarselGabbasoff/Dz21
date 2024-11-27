@@ -1,11 +1,16 @@
-from django_filters.rest_framework import DjangoFilterBackend
-from rest_framework import generics
+from django.shortcuts import get_object_or_404
+from rest_framework import generics, status
 from rest_framework.exceptions import PermissionDenied
-from rest_framework.filters import OrderingFilter
+from rest_framework.generics import CreateAPIView
+from rest_framework.response import Response
+from rest_framework.views import APIView
 
-from users.models import Payment, User
-from users.serializers import (PaymentSerializer, UserHiddenSerializer,
-                               UserSerializer)
+from lms.models import Course
+from users.models import Payment, Subscription, User
+from users.serializers import (PaymentSerializer, SubscriptionSerializer,
+                               UserHiddenSerializer, UserSerializer)
+from users.services import (convert_rub_to_usd, create_stripe_price,
+                            create_stripe_session)
 
 
 class UserCreateAPIView(generics.CreateAPIView):
@@ -44,6 +49,10 @@ class UserRetrieveAPIView(generics.RetrieveAPIView):
     serializer_class = UserHiddenSerializer
 
     def get_serializer_class(self):
+        if getattr(self, "swagger_fake_view", False):
+            return UserSerializer
+
+        # Обычная логика выполнения
         if self.get_object() == self.request.user:
             return UserSerializer
         return UserHiddenSerializer
@@ -59,9 +68,44 @@ class UserDestroyAPIView(generics.DestroyAPIView):
         instance.delete()
 
 
-class PaymentListAPIView(generics.ListAPIView):
-    queryset = Payment.objects.all()
+class SubscriptionAPIView(APIView):
+    queryset = Subscription.objects.all()
+    serializer_class = SubscriptionSerializer
+
+    def post(self, request, *args, **kwargs):
+        user = request.user
+
+        course_id = request.data.get("course_id")
+        course_item = get_object_or_404(Course, id=course_id)
+
+        subs_item = Subscription.objects.filter(user=user, course=course_item)
+
+        if subs_item.exists():
+            subs_item.delete()
+            message = "Подписка удалена"
+        else:
+            Subscription.objects.create(user=user, course=course_item)
+            message = "Подписка добавлена"
+
+        return Response({"message": message}, status=status.HTTP_200_OK)
+
+
+class PaymentCreateAPIView(CreateAPIView):
     serializer_class = PaymentSerializer
-    filter_backends = [DjangoFilterBackend, OrderingFilter]
-    ordering_fields = ("pay_day",)
-    filterset_fields = ("course", "lesson", "pay_method")
+    queryset = Payment.objects.all()
+
+    def perform_create(self, serializer):
+        payment = serializer.save(user=self.request.user)
+
+        amount_in_usd = convert_rub_to_usd(payment.amount)
+
+        course = Course.objects.get(id=payment.course.id)
+        name = course.title
+
+        price = create_stripe_price(amount_in_usd, name)
+
+        session_id, payment_link = create_stripe_session(price)
+
+        payment.session_id = session_id
+        payment.link = payment_link
+        payment.save()

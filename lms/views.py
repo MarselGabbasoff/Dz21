@@ -3,15 +3,19 @@ from rest_framework.generics import (ListCreateAPIView,
                                      RetrieveUpdateDestroyAPIView)
 
 from lms.models import Course, Lesson
+from lms.paginations import CustomPagination
 from lms.serializers import CourseSerializer, LessonSerializer
 from users.permissions import IsModerator, IsOwner
 
 
 class CourseViewSet(viewsets.ModelViewSet):
     serializer_class = CourseSerializer
+    pagination_class = CustomPagination
 
     def get_queryset(self):
         user = self.request.user
+        if not user.is_authenticated:
+            return Course.objects.none()
         if user.groups.filter(name="moderator").exists():
             return Course.objects.all()
         return Course.objects.filter(owner=user)
@@ -33,9 +37,12 @@ class CourseViewSet(viewsets.ModelViewSet):
 
 class LessonListCreateAPIView(ListCreateAPIView):
     serializer_class = LessonSerializer
+    pagination_class = CustomPagination
 
     def get_queryset(self):
         user = self.request.user
+        if not user.is_authenticated:
+            return Lesson.objects.none()
         if user.groups.filter(name="moderator").exists():
             return Lesson.objects.all()
         return Lesson.objects.filter(owner=user)
@@ -56,6 +63,8 @@ class LessonRetrieveUpdateDestroyAPIView(RetrieveUpdateDestroyAPIView):
 
     def get_queryset(self):
         user = self.request.user
+        if not user.is_authenticated:
+            return Lesson.objects.none()
         if user.groups.filter(name="moderator").exists():
             return Lesson.objects.all()
         return Lesson.objects.filter(owner=user)
