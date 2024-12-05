@@ -2,6 +2,7 @@ import os
 from datetime import timedelta
 from pathlib import Path
 
+from celery.schedules import crontab
 from dotenv import load_dotenv
 
 load_dotenv()
@@ -22,8 +23,10 @@ INSTALLED_APPS = [
     "django.contrib.messages",
     "django.contrib.staticfiles",
     "rest_framework",
+    "drf_spectacular",
     "django_filters",
     "rest_framework_simplejwt",
+    "django_celery_beat",
     "users",
     "lms",
 ]
@@ -90,11 +93,19 @@ REST_FRAMEWORK = {
         "rest_framework_simplejwt.authentication.JWTAuthentication",
     ),
     "DEFAULT_PERMISSION_CLASSES": ("rest_framework.permissions.IsAuthenticated",),
+    "DEFAULT_SCHEMA_CLASS": "drf_spectacular.openapi.AutoSchema",
 }
 
 SIMPLE_JWT = {
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
+}
+
+SPECTACULAR_SETTINGS = {
+    "TITLE": "Learnyfi API",
+    "DESCRIPTION": "This project is an online Learning Management System (LMS) designed to facilitate the creation and sharing of educational materials and courses",
+    "VERSION": "1.0.0",
+    "SERVE_INCLUDE_SCHEMA": False,
 }
 
 LANGUAGE_CODE = "en-us"
@@ -113,3 +124,33 @@ MEDIA_ROOT = os.path.join(BASE_DIR, "media")
 DEFAULT_AUTO_FIELD = "django.db.models.BigAutoField"
 
 AUTH_USER_MODEL = "users.User"
+
+STRIPE_API_KEY = os.getenv("STRIPE_API_KEY")
+CURRENCY_API_KEY = os.getenv("CURRENCY_API_KEY")
+
+CELERY_BROKER_URL = os.getenv("CELERY_BROKER_URL")
+CELERY_RESULT_BACKEND = os.getenv("CELERY_RESULT_BACKEND")
+CELERY_TASK_TRACK_STARTED = True
+CELERY_TIMEZONE = "UTC"
+CELERY_ENABLE_UTC = True
+
+EMAIL_BACKEND = "django.core.mail.backends.smtp.EmailBackend"
+EMAIL_HOST = "smtp.yandex.ru"
+EMAIL_PORT = 465
+EMAIL_USE_SSL = True
+
+EMAIL_HOST_USER = os.getenv("EMAIL_HOST_USER")
+EMAIL_HOST_PASSWORD = os.getenv("EMAIL_HOST_PASSWORD")
+
+DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+SERVER_EMAIL = EMAIL_HOST_USER
+EMAIL_ADMIN = EMAIL_HOST_USER
+
+CELERY_BEAT_SCHEDULE = {
+    "deactivate-inactive-users-every-minute": {
+        "task": "users.tasks.deactivate_inactive_users",
+        "schedule": crontab(minute="*/1"),
+    },
+}
+
+CELERY_BEAT_SCHEDULE_FILENAME = "celerybeat-schedule"
